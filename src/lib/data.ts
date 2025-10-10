@@ -83,7 +83,7 @@ export const products: Product[] = [
     name: 'X-Frango',
     price: 30,
     category: 'chicken',
-    image: 'https://images.unsplash.com/photo-1606755456206-b25206cde27e?w=400&h=300&fit=crop',
+    image: 'https://k6hrqrxuu8obbfwn.public.blob.vercel-storage.com/temp/653bf251-e039-4162-91a6-f4b360115026.jpg',
     ingredients: ['Pão', 'Hambúrguer', 'Frango', 'Catupiry', 'Milho', 'Alface', 'Tomate', 'Bacon', 'Presunto', 'Muçarela', 'Batata Palha']
   },
 
