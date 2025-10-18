@@ -990,8 +990,111 @@ const DeliveryForm = () => {
       createdAt: new Date()
     };
 
-    // Adicionar pedido ao painel
+    // Adicionar pedido ao painel ANTES de enviar para WhatsApp
     orderManager.addOrder(newOrder);
+    
+    // Gerar cupom fiscal automaticamente após adicionar o pedido
+    setTimeout(() => {
+      const generateFiscalCoupon = (order: Order) => {
+        const couponData = {
+          numero: Math.floor(Math.random() * 100000),
+          data: new Date().toLocaleString('pt-BR'),
+          cliente: order.customerInfo.name,
+          items: order.items,
+          total: order.total,
+          pagamento: order.customerInfo.paymentMethod,
+          endereco: order.customerInfo.address
+        };
+
+        // Criar conteúdo do cupom otimizado para papel térmico 80mm
+        const couponContent = `
+          <div style="width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.2; margin: 0; padding: 5mm;">
+            <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px;">
+              <div style="font-size: 16px; font-weight: bold;">CORUJÃO LANCHES</div>
+              <div style="font-size: 10px;">CNPJ: 00.000.000/0001-00</div>
+              <div style="font-size: 10px;">Endereço: Rua Principal, 123</div>
+              <div style="font-size: 10px;">Tel: (35) 99840-0130</div>
+            </div>
+            
+            <div style="margin: 10px 0; text-align: center;">
+              <div style="font-weight: bold;">CUPOM FISCAL Nº: ${couponData.numero}</div>
+              <div style="font-size: 10px;">${couponData.data}</div>
+            </div>
+            
+            <div style="margin: 10px 0;">
+              <div><strong>Cliente:</strong> ${couponData.cliente}</div>
+              <div style="font-size: 10px;"><strong>Endereço:</strong> ${couponData.endereco}</div>
+            </div>
+            
+            <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 5px 0; margin: 10px 0;">
+              <div style="font-weight: bold; margin-bottom: 5px;">ITENS DO PEDIDO:</div>
+              ${couponData.items.map((item: any, index: number) => `
+                <div style="margin: 2px 0; display: flex; justify-content: space-between;">
+                  <span>${index + 1}. ${item.name} (${item.quantity}x)</span>
+                  <span>R$ ${(item.price * item.quantity).toFixed(2)}</span>
+                </div>
+              `).join('')}
+            </div>
+            
+            <div style="margin: 10px 0; font-size: 14px;">
+              <div style="display: flex; justify-content: space-between; font-weight: bold;">
+                <span>TOTAL:</span>
+                <span>R$ ${couponData.total.toFixed(2)}</span>
+              </div>
+              <div style="margin-top: 5px;">
+                <strong>Pagamento:</strong> ${couponData.pagamento}
+              </div>
+            </div>
+            
+            <div style="text-align: center; margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px;">
+              <div style="font-size: 12px; font-weight: bold;">Obrigado pela preferência!</div>
+              <div style="font-size: 10px; margin-top: 5px;">Volte sempre! 😊</div>
+            </div>
+          </div>
+        `;
+
+        // Abrir janela de impressão
+        const printWindow = window.open('', '_blank', 'width=300,height=600');
+        if (printWindow) {
+          printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Cupom Fiscal - ${couponData.numero}</title>
+                <style>
+                  @page { 
+                    size: 80mm auto; 
+                    margin: 0; 
+                  }
+                  body { 
+                    margin: 0; 
+                    padding: 0;
+                    font-family: 'Courier New', monospace;
+                  }
+                  @media print {
+                    body { margin: 0; padding: 0; }
+                  }
+                </style>
+              </head>
+              <body>
+                ${couponContent}
+              </body>
+            </html>
+          `);
+          printWindow.document.close();
+          
+          // Imprimir automaticamente após carregar
+          setTimeout(() => {
+            printWindow.print();
+          }, 500);
+        }
+
+        return couponData;
+      };
+
+      // Gerar cupom fiscal automaticamente
+      generateFiscalCoupon(newOrder);
+    }, 1000); // Aguarda 1 segundo para garantir que o pedido foi processado
     
     // Enviar para WhatsApp
     sendToWhatsApp(formData);
