@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, Plus, Minus, ShoppingCart, MessageCircle, Instagram, Utensils, Coffee, Settings, Printer, FileText, LogOut, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Plus, Minus, ShoppingCart, MessageCircle, Instagram, Utensils, Coffee, Settings, Printer, FileText, LogOut, Eye, EyeOff, Package, BarChart3, Edit, Trash2, Save, Upload, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,8 +10,25 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCart } from '@/lib/cart-context';
-import { products, acaiSizes, acaiToppings, additionals, categoryNames } from '@/lib/data';
+import { products as initialProducts, acaiSizes, acaiToppings, additionals, categoryNames } from '@/lib/data';
 import { Product, AcaiSize, AcaiTopping, Additional, DeliveryInfo } from '@/lib/types';
+
+// Tipos para o sistema de pedidos
+interface Order {
+  id: string;
+  numero: string;
+  cliente: string;
+  total: number;
+  status: 'em preparo' | 'saiu para entrega' | 'entregue' | 'cancelado';
+  items: any[];
+  customerInfo: {
+    name: string;
+    address: string;
+    paymentMethod: string;
+    phone?: string;
+  };
+  createdAt: Date;
+}
 
 // Componente de Login Admin
 const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
@@ -32,41 +49,43 @@ const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-900 rounded-2xl max-w-md w-full p-8 border border-purple-500/20">
+      <div className="bg-white rounded-2xl max-w-md w-full p-8 border border-purple-200 shadow-2xl">
         <div className="text-center mb-8">
-          <Settings className="w-12 h-12 text-purple-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white">Painel Administrativo</h2>
-          <p className="text-gray-400">Acesso restrito</p>
+          <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Settings className="w-8 h-8 text-purple-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Painel Administrativo</h2>
+          <p className="text-gray-600">Canto do Açaí - Acesso restrito</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <Label htmlFor="username" className="text-white">Usuário</Label>
+            <Label htmlFor="username" className="text-gray-700 font-medium">Usuário</Label>
             <Input
               id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="bg-gray-800 border-purple-500/20 text-white"
+              className="mt-1 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
               required
             />
           </div>
 
           <div>
-            <Label htmlFor="password" className="text-white">Senha</Label>
-            <div className="relative">
+            <Label htmlFor="password" className="text-gray-700 font-medium">Senha</Label>
+            <div className="relative mt-1">
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="bg-gray-800 border-purple-500/20 text-white pr-10"
+                className="pr-10 border-gray-300 focus:border-purple-500 focus:ring-purple-500"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -74,14 +93,14 @@ const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
           </div>
 
           {error && (
-            <div className="text-red-400 text-sm text-center">{error}</div>
+            <div className="text-red-600 text-sm text-center bg-red-50 p-2 rounded">{error}</div>
           )}
 
           <Button 
             type="submit"
-            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5"
           >
-            Entrar
+            Entrar no Painel
           </Button>
         </form>
       </div>
@@ -91,192 +110,611 @@ const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
 
 // Componente do Painel Admin
 const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
-  const [orders, setOrders] = useState<any[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState('pedidos');
+  const [products, setProducts] = useState(initialProducts);
+  const [orders, setOrders] = useState<Order[]>([
+    {
+      id: '1',
+      numero: '#001',
+      cliente: 'João Silva',
+      total: 45.90,
+      status: 'em preparo',
+      items: [
+        { name: 'X-Bacon', quantity: 1, price: 25.90 },
+        { name: 'Açaí 500ml', quantity: 1, price: 20.00 }
+      ],
+      customerInfo: {
+        name: 'João Silva',
+        address: 'Rua das Flores, 123',
+        paymentMethod: 'PIX',
+        phone: '(35) 99999-9999'
+      },
+      createdAt: new Date(Date.now() - 15 * 60 * 1000) // 15 minutos atrás
+    },
+    {
+      id: '2',
+      numero: '#002',
+      cliente: 'Maria Santos',
+      total: 32.50,
+      status: 'saiu para entrega',
+      items: [
+        { name: 'X-Salada', quantity: 1, price: 22.50 },
+        { name: 'Refrigerante', quantity: 1, price: 10.00 }
+      ],
+      customerInfo: {
+        name: 'Maria Santos',
+        address: 'Av. Principal, 456',
+        paymentMethod: 'Cartão',
+        phone: '(35) 98888-8888'
+      },
+      createdAt: new Date(Date.now() - 45 * 60 * 1000) // 45 minutos atrás
+    }
+  ]);
 
-  const generateFiscalCoupon = (order: any) => {
+  // Função para gerar cupom fiscal
+  const generateFiscalCoupon = (order: Order) => {
     const couponData = {
       numero: Math.floor(Math.random() * 100000),
       data: new Date().toLocaleString('pt-BR'),
-      cliente: order.customerInfo?.name || 'Cliente',
+      cliente: order.customerInfo.name,
       items: order.items,
       total: order.total,
-      pagamento: order.customerInfo?.paymentMethod || 'PIX',
-      endereco: order.customerInfo?.address || 'Retirada'
+      pagamento: order.customerInfo.paymentMethod,
+      endereco: order.customerInfo.address
     };
 
-    // Gerar cupom fiscal
+    // Criar conteúdo do cupom otimizado para papel térmico 80mm
     const couponContent = `
-═══════════════════════════════════════
-        CORUJÃO LANCHES & AÇAÍ
-═══════════════════════════════════════
-CNPJ: 00.000.000/0001-00
-Endereço: Rua Principal, 123
-Telefone: (35) 99840-0130
-═══════════════════════════════════════
-CUPOM FISCAL Nº: ${couponData.numero}
-Data: ${couponData.data}
-Cliente: ${couponData.cliente}
-═══════════════════════════════════════
-ITENS:
-${couponData.items.map((item: any) => 
-  `${item.quantity}x ${item.name} - R$ ${(item.price * item.quantity).toFixed(2)}`
-).join('\n')}
-═══════════════════════════════════════
-TOTAL: R$ ${couponData.total.toFixed(2)}
-PAGAMENTO: ${couponData.pagamento}
-${couponData.endereco !== 'Retirada' ? `ENTREGA: ${couponData.endereco}` : 'RETIRADA NO LOCAL'}
-═══════════════════════════════════════
-        Obrigado pela preferência!
-═══════════════════════════════════════
+      <div style="width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.2; margin: 0; padding: 5mm;">
+        <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px;">
+          <div style="font-size: 16px; font-weight: bold;">CANTO DO AÇAÍ</div>
+          <div style="font-size: 10px;">CNPJ: 00.000.000/0001-00</div>
+          <div style="font-size: 10px;">Endereço: Rua Principal, 123</div>
+          <div style="font-size: 10px;">Tel: (35) 99840-0130</div>
+        </div>
+        
+        <div style="margin: 10px 0; text-align: center;">
+          <div style="font-weight: bold;">CUPOM FISCAL Nº: ${couponData.numero}</div>
+          <div style="font-size: 10px;">${couponData.data}</div>
+        </div>
+        
+        <div style="margin: 10px 0;">
+          <div><strong>Cliente:</strong> ${couponData.cliente}</div>
+          <div style="font-size: 10px;"><strong>Endereço:</strong> ${couponData.endereco}</div>
+        </div>
+        
+        <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 5px 0; margin: 10px 0;">
+          <div style="font-weight: bold; margin-bottom: 5px;">ITENS DO PEDIDO:</div>
+          ${couponData.items.map((item: any, index: number) => `
+            <div style="margin: 2px 0; display: flex; justify-content: space-between;">
+              <span>${index + 1}. ${item.name} (${item.quantity}x)</span>
+              <span>R$ ${(item.price * item.quantity).toFixed(2)}</span>
+            </div>
+          `).join('')}
+        </div>
+        
+        <div style="margin: 10px 0; font-size: 14px;">
+          <div style="display: flex; justify-content: space-between; font-weight: bold;">
+            <span>TOTAL:</span>
+            <span>R$ ${couponData.total.toFixed(2)}</span>
+          </div>
+          <div style="margin-top: 5px;">
+            <strong>Pagamento:</strong> ${couponData.pagamento}
+          </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px;">
+          <div style="font-size: 12px; font-weight: bold;">Obrigado pela preferência!</div>
+          <div style="font-size: 10px; margin-top: 5px;">Volte sempre! 😊</div>
+        </div>
+      </div>
     `;
 
-    // Imprimir automaticamente
-    const printWindow = window.open('', '_blank');
+    // Abrir janela de impressão
+    const printWindow = window.open('', '_blank', 'width=300,height=600');
     if (printWindow) {
       printWindow.document.write(`
+        <!DOCTYPE html>
         <html>
           <head>
             <title>Cupom Fiscal - ${couponData.numero}</title>
             <style>
-              body { 
-                font-family: 'Courier New', monospace; 
-                font-size: 12px; 
+              @page { 
+                size: 80mm auto; 
                 margin: 0; 
-                padding: 20px;
-                white-space: pre-line;
+              }
+              body { 
+                margin: 0; 
+                padding: 0;
+                font-family: 'Courier New', monospace;
               }
               @media print {
-                body { margin: 0; padding: 10px; }
+                body { margin: 0; padding: 0; }
               }
             </style>
           </head>
-          <body>${couponContent}</body>
+          <body>
+            ${couponContent}
+          </body>
         </html>
       `);
       printWindow.document.close();
-      printWindow.print();
+      
+      // Imprimir automaticamente após carregar
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
     }
 
     return couponData;
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 overflow-y-auto">
-      <div className="min-h-screen p-4">
-        <div className="max-w-6xl mx-auto">
-          {/* Header do Admin */}
-          <div className="bg-gray-900 rounded-2xl p-6 mb-6 border border-purple-500/20">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Settings className="w-8 h-8 text-purple-400" />
+  // Função para atualizar status do pedido
+  const updateOrderStatus = (orderId: string, newStatus: Order['status']) => {
+    setOrders(prev => prev.map(order => 
+      order.id === orderId ? { ...order, status: newStatus } : order
+    ));
+  };
+
+  // Função para calcular tempo desde o pedido
+  const getTimeSinceOrder = (createdAt: Date) => {
+    const now = new Date();
+    const diffInMinutes = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60));
+    
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes}min`;
+    } else {
+      const hours = Math.floor(diffInMinutes / 60);
+      const minutes = diffInMinutes % 60;
+      return `${hours}h ${minutes}min`;
+    }
+  };
+
+  // Função para obter cor do status
+  const getStatusColor = (status: Order['status']) => {
+    switch (status) {
+      case 'em preparo': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'saiu para entrega': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'entregue': return 'bg-green-100 text-green-800 border-green-200';
+      case 'cancelado': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  // Componente de Gerenciamento de Produtos
+  const ProductManagement = () => {
+    const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const [newProduct, setNewProduct] = useState<Partial<Product>>({
+      name: '',
+      price: 0,
+      category: 'hamburger',
+      image: '',
+      ingredients: []
+    });
+    const [showAddForm, setShowAddForm] = useState(false);
+
+    const handleSaveProduct = (product: Product) => {
+      setProducts(prev => prev.map(p => p.id === product.id ? product : p));
+      setEditingProduct(null);
+    };
+
+    const handleDeleteProduct = (productId: string) => {
+      if (confirm('Tem certeza que deseja remover este produto?')) {
+        setProducts(prev => prev.filter(p => p.id !== productId));
+      }
+    };
+
+    const handleAddProduct = () => {
+      if (newProduct.name && newProduct.price) {
+        const product: Product = {
+          id: Date.now().toString(),
+          name: newProduct.name,
+          price: newProduct.price,
+          category: newProduct.category || 'hamburger',
+          image: newProduct.image || '',
+          ingredients: newProduct.ingredients || []
+        };
+        setProducts(prev => [...prev, product]);
+        setNewProduct({ name: '', price: 0, category: 'hamburger', image: '', ingredients: [] });
+        setShowAddForm(false);
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h3 className="text-xl font-bold text-gray-800">Gerenciar Produtos</h3>
+          <Button 
+            onClick={() => setShowAddForm(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Adicionar Produto
+          </Button>
+        </div>
+
+        {showAddForm && (
+          <Card className="border-purple-200">
+            <CardContent className="p-6">
+              <h4 className="font-semibold text-gray-800 mb-4">Novo Produto</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <h1 className="text-2xl font-bold text-white">Painel Administrativo</h1>
-                  <p className="text-gray-400">Bem-vindo, Bruno</p>
+                  <Label className="text-gray-700">Nome do Produto</Label>
+                  <Input
+                    value={newProduct.name}
+                    onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-700">Preço (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={newProduct.price}
+                    onChange={(e) => setNewProduct({...newProduct, price: parseFloat(e.target.value)})}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-700">Categoria</Label>
+                  <Select value={newProduct.category} onValueChange={(value) => setNewProduct({...newProduct, category: value})}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(categoryNames).map(([key, name]) => (
+                        <SelectItem key={key} value={key}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-700">URL da Imagem</Label>
+                  <Input
+                    value={newProduct.image}
+                    onChange={(e) => setNewProduct({...newProduct, image: e.target.value})}
+                    className="mt-1"
+                    placeholder="https://..."
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <Button onClick={handleAddProduct} className="bg-green-600 hover:bg-green-700">
+                  <Save className="w-4 h-4 mr-2" />
+                  Salvar
+                </Button>
+                <Button variant="outline" onClick={() => setShowAddForm(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {products.map((product) => (
+            <Card key={product.id} className="border-gray-200 hover:border-purple-300 transition-colors">
+              <CardContent className="p-4">
+                {editingProduct?.id === product.id ? (
+                  <div className="space-y-3">
+                    <Input
+                      value={editingProduct.name}
+                      onChange={(e) => setEditingProduct({...editingProduct, name: e.target.value})}
+                      className="font-semibold"
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={editingProduct.price}
+                      onChange={(e) => setEditingProduct({...editingProduct, price: parseFloat(e.target.value)})}
+                    />
+                    <Input
+                      value={editingProduct.image}
+                      onChange={(e) => setEditingProduct({...editingProduct, image: e.target.value})}
+                      placeholder="URL da imagem"
+                    />
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleSaveProduct(editingProduct)}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Save className="w-3 h-3 mr-1" />
+                        Salvar
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => setEditingProduct(null)}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {product.image && (
+                      <img src={product.image} alt={product.name} className="w-full h-32 object-cover rounded mb-3" />
+                    )}
+                    <h4 className="font-semibold text-gray-800 mb-1">{product.name}</h4>
+                    <p className="text-purple-600 font-bold mb-2">R$ {product.price.toFixed(2)}</p>
+                    <p className="text-sm text-gray-600 mb-3">{categoryNames[product.category as keyof typeof categoryNames]}</p>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => setEditingProduct(product)}
+                        className="flex-1"
+                      >
+                        <Edit className="w-3 h-3 mr-1" />
+                        Editar
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleDeleteProduct(product.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-50 z-50 overflow-y-auto">
+      <div className="min-h-screen">
+        {/* Header do Painel */}
+        <header className="bg-white border-b border-gray-200 shadow-sm">
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                  <Settings className="w-6 h-6 text-purple-600" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-800">Canto do Açaí</h1>
+                  <p className="text-gray-600">Painel Administrativo</p>
                 </div>
               </div>
               <Button 
                 onClick={onLogout}
                 variant="outline"
-                className="border-red-500/20 text-red-400 hover:bg-red-500/10"
+                className="border-red-200 text-red-600 hover:bg-red-50"
               >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sair
               </Button>
             </div>
           </div>
+        </header>
 
-          {/* Simulação de Pedidos */}
-          <div className="bg-gray-900 rounded-2xl p-6 border border-purple-500/20">
-            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-purple-400" />
-              Pedidos Recentes
-            </h2>
-
-            {/* Pedidos de Exemplo */}
-            <div className="space-y-4">
+        <div className="flex">
+          {/* Menu Lateral */}
+          <aside className="w-64 bg-white border-r border-gray-200 min-h-screen">
+            <nav className="p-4 space-y-2">
               {[
-                {
-                  id: 1,
-                  numero: '#001',
-                  cliente: 'João Silva',
-                  total: 45.90,
-                  status: 'Pendente',
-                  items: [
-                    { name: 'X-Bacon', quantity: 1, price: 25.90 },
-                    { name: 'Açaí 500ml', quantity: 1, price: 20.00 }
-                  ],
-                  customerInfo: {
-                    name: 'João Silva',
-                    address: 'Rua das Flores, 123',
-                    paymentMethod: 'PIX'
-                  }
-                },
-                {
-                  id: 2,
-                  numero: '#002',
-                  cliente: 'Maria Santos',
-                  total: 32.50,
-                  status: 'Preparando',
-                  items: [
-                    { name: 'X-Salada', quantity: 1, price: 22.50 },
-                    { name: 'Refrigerante', quantity: 1, price: 10.00 }
-                  ],
-                  customerInfo: {
-                    name: 'Maria Santos',
-                    address: 'Av. Principal, 456',
-                    paymentMethod: 'Cartão'
-                  }
-                }
-              ].map((order) => (
-                <div key={order.id} className="bg-gray-800 rounded-lg p-4 border border-purple-500/10">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <span className="text-purple-400 font-bold">{order.numero}</span>
-                      <span className="text-white font-semibold">{order.cliente}</span>
-                      <Badge className={`${
-                        order.status === 'Pendente' ? 'bg-yellow-500/20 text-yellow-400' :
-                        order.status === 'Preparando' ? 'bg-blue-500/20 text-blue-400' :
-                        'bg-green-500/20 text-green-400'
-                      }`}>
-                        {order.status}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl font-bold text-purple-400">
-                        R$ {order.total.toFixed(2)}
-                      </span>
-                      <Button
-                        onClick={() => generateFiscalCoupon(order)}
-                        className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
-                        size="sm"
-                      >
-                        <Printer className="w-4 h-4 mr-2" />
-                        Gerar Cupom
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="text-sm text-gray-400">
-                    <p className="mb-1">Itens: {order.items.map(item => `${item.quantity}x ${item.name}`).join(', ')}</p>
-                    <p>Endereço: {order.customerInfo.address}</p>
-                    <p>Pagamento: {order.customerInfo.paymentMethod}</p>
+                { id: 'pedidos', label: 'Pedidos', icon: FileText },
+                { id: 'produtos', label: 'Produtos', icon: Package },
+                { id: 'impressao', label: 'Impressão', icon: Printer },
+                { id: 'relatorios', label: 'Relatórios', icon: BarChart3 },
+                { id: 'configuracoes', label: 'Configurações', icon: Settings }
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                    activeTab === item.id
+                      ? 'bg-purple-100 text-purple-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <item.icon className="w-5 h-5" />
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </aside>
+
+          {/* Conteúdo Principal */}
+          <main className="flex-1 p-6">
+            {activeTab === 'pedidos' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-gray-800">Gestão de Pedidos</h2>
+                  <div className="flex gap-2">
+                    <Badge className="bg-yellow-100 text-yellow-800">
+                      {orders.filter(o => o.status === 'em preparo').length} Em Preparo
+                    </Badge>
+                    <Badge className="bg-blue-100 text-blue-800">
+                      {orders.filter(o => o.status === 'saiu para entrega').length} Saiu para Entrega
+                    </Badge>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            {/* Instruções */}
-            <div className="mt-8 p-4 bg-purple-500/10 rounded-lg border border-purple-500/20">
-              <h3 className="text-white font-semibold mb-2">📋 Instruções:</h3>
-              <ul className="text-gray-300 text-sm space-y-1">
-                <li>• Clique em "Gerar Cupom" para criar e imprimir o cupom fiscal automaticamente</li>
-                <li>• O cupom será aberto em nova janela e enviado para impressão</li>
-                <li>• Todos os dados do pedido são incluídos no cupom fiscal</li>
-                <li>• O sistema gera numeração automática para cada cupom</li>
-              </ul>
-            </div>
-          </div>
+                <div className="grid gap-4">
+                  {orders.map((order) => (
+                    <Card key={order.id} className="border-gray-200">
+                      <CardContent className="p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-4">
+                            <div>
+                              <h3 className="font-bold text-lg text-gray-800">{order.numero}</h3>
+                              <p className="text-gray-600">{order.cliente}</p>
+                            </div>
+                            <Badge className={`${getStatusColor(order.status)} border`}>
+                              {order.status}
+                            </Badge>
+                            <div className="flex items-center gap-1 text-gray-500 text-sm">
+                              <Clock className="w-4 h-4" />
+                              {getTimeSinceOrder(order.createdAt)}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-bold text-purple-600">R$ {order.total.toFixed(2)}</p>
+                            <Button
+                              onClick={() => generateFiscalCoupon(order)}
+                              className="bg-green-600 hover:bg-green-700 text-white mt-2"
+                              size="sm"
+                            >
+                              <Printer className="w-4 h-4 mr-2" />
+                              Imprimir Cupom
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-2">Itens do Pedido:</h4>
+                            <ul className="text-sm text-gray-600 space-y-1">
+                              {order.items.map((item, index) => (
+                                <li key={index}>
+                                  {item.quantity}x {item.name} - R$ {(item.price * item.quantity).toFixed(2)}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-700 mb-2">Informações:</h4>
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <p><strong>Endereço:</strong> {order.customerInfo.address}</p>
+                              <p><strong>Pagamento:</strong> {order.customerInfo.paymentMethod}</p>
+                              {order.customerInfo.phone && (
+                                <p><strong>Telefone:</strong> {order.customerInfo.phone}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Select value={order.status} onValueChange={(value) => updateOrderStatus(order.id, value as Order['status'])}>
+                            <SelectTrigger className="w-48">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="em preparo">Em Preparo</SelectItem>
+                              <SelectItem value="saiu para entrega">Saiu para Entrega</SelectItem>
+                              <SelectItem value="entregue">Entregue</SelectItem>
+                              <SelectItem value="cancelado">Cancelado</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'produtos' && <ProductManagement />}
+
+            {activeTab === 'impressao' && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-800">Central de Impressão</h2>
+                <Card className="border-purple-200">
+                  <CardContent className="p-6">
+                    <h3 className="font-semibold text-gray-800 mb-4">Configurações de Impressão</h3>
+                    <div className="space-y-4">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h4 className="font-medium text-blue-800 mb-2">📋 Instruções de Impressão:</h4>
+                        <ul className="text-blue-700 text-sm space-y-1">
+                          <li>• Cupons são otimizados para papel térmico de 80mm</li>
+                          <li>• Impressão automática após gerar cupom</li>
+                          <li>• Use o botão "Imprimir Cupom" em cada pedido</li>
+                          <li>• Numeração automática para controle fiscal</li>
+                        </ul>
+                      </div>
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <h4 className="font-medium text-green-800 mb-2">✅ Sistema Configurado:</h4>
+                        <p className="text-green-700 text-sm">
+                          O sistema está configurado para imprimir cupons fiscais automaticamente 
+                          usando window.print() do navegador, otimizado para papel térmico 80mm.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {activeTab === 'relatorios' && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-800">Relatórios</h2>
+                <div className="grid md:grid-cols-3 gap-6">
+                  <Card className="border-purple-200">
+                    <CardContent className="p-6 text-center">
+                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <BarChart3 className="w-6 h-6 text-green-600" />
+                      </div>
+                      <h3 className="font-semibold text-gray-800 mb-2">Vendas Hoje</h3>
+                      <p className="text-2xl font-bold text-green-600">R$ 78,40</p>
+                      <p className="text-sm text-gray-600">2 pedidos</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-purple-200">
+                    <CardContent className="p-6 text-center">
+                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Package className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <h3 className="font-semibold text-gray-800 mb-2">Produtos</h3>
+                      <p className="text-2xl font-bold text-blue-600">{products.length}</p>
+                      <p className="text-sm text-gray-600">cadastrados</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-purple-200">
+                    <CardContent className="p-6 text-center">
+                      <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <FileText className="w-6 h-6 text-purple-600" />
+                      </div>
+                      <h3 className="font-semibold text-gray-800 mb-2">Pedidos</h3>
+                      <p className="text-2xl font-bold text-purple-600">{orders.length}</p>
+                      <p className="text-sm text-gray-600">total</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'configuracoes' && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-bold text-gray-800">Configurações</h2>
+                <Card className="border-purple-200">
+                  <CardContent className="p-6">
+                    <h3 className="font-semibold text-gray-800 mb-4">Informações da Loja</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-gray-700">Nome da Loja</Label>
+                        <Input value="Canto do Açaí" className="mt-1" />
+                      </div>
+                      <div>
+                        <Label className="text-gray-700">CNPJ</Label>
+                        <Input value="00.000.000/0001-00" className="mt-1" />
+                      </div>
+                      <div>
+                        <Label className="text-gray-700">Endereço</Label>
+                        <Input value="Rua Principal, 123" className="mt-1" />
+                      </div>
+                      <div>
+                        <Label className="text-gray-700">Telefone</Label>
+                        <Input value="(35) 99840-0130" className="mt-1" />
+                      </div>
+                    </div>
+                    <Button className="mt-4 bg-purple-600 hover:bg-purple-700">
+                      Salvar Configurações
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </main>
         </div>
       </div>
     </div>
@@ -1015,7 +1453,7 @@ export default function CorujaoDelivery() {
           </div>
 
           {Object.entries(categoryNames).map(([category, name]) => {
-            const categoryProducts = products.filter(p => p.category === category);
+            const categoryProducts = initialProducts.filter(p => p.category === category);
             if (categoryProducts.length === 0) return null;
 
             return (
