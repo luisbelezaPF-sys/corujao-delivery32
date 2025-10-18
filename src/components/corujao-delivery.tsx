@@ -30,6 +30,84 @@ interface Order {
   createdAt: Date;
 }
 
+// Sistema de gerenciamento de pedidos global
+class OrderManager {
+  private static instance: OrderManager;
+  private orders: Order[] = [
+    {
+      id: '1',
+      numero: '#001',
+      cliente: 'João Silva',
+      total: 45.90,
+      status: 'em preparo',
+      items: [
+        { name: 'X-Bacon', quantity: 1, price: 25.90 },
+        { name: 'Açaí 500ml', quantity: 1, price: 20.00 }
+      ],
+      customerInfo: {
+        name: 'João Silva',
+        address: 'Rua das Flores, 123',
+        paymentMethod: 'PIX',
+        phone: '(35) 99999-9999'
+      },
+      createdAt: new Date(Date.now() - 15 * 60 * 1000) // 15 minutos atrás
+    },
+    {
+      id: '2',
+      numero: '#002',
+      cliente: 'Maria Santos',
+      total: 32.50,
+      status: 'saiu para entrega',
+      items: [
+        { name: 'X-Salada', quantity: 1, price: 22.50 },
+        { name: 'Refrigerante', quantity: 1, price: 10.00 }
+      ],
+      customerInfo: {
+        name: 'Maria Santos',
+        address: 'Av. Principal, 456',
+        paymentMethod: 'Cartão',
+        phone: '(35) 98888-8888'
+      },
+      createdAt: new Date(Date.now() - 45 * 60 * 1000) // 45 minutos atrás
+    }
+  ];
+  private listeners: Array<(orders: Order[]) => void> = [];
+
+  static getInstance(): OrderManager {
+    if (!OrderManager.instance) {
+      OrderManager.instance = new OrderManager();
+    }
+    return OrderManager.instance;
+  }
+
+  addOrder(order: Order) {
+    this.orders.unshift(order); // Adiciona no início da lista
+    this.notifyListeners();
+  }
+
+  getOrders(): Order[] {
+    return [...this.orders];
+  }
+
+  updateOrderStatus(orderId: string, status: Order['status']) {
+    this.orders = this.orders.map(order => 
+      order.id === orderId ? { ...order, status } : order
+    );
+    this.notifyListeners();
+  }
+
+  subscribe(listener: (orders: Order[]) => void) {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== listener);
+    };
+  }
+
+  private notifyListeners() {
+    this.listeners.forEach(listener => listener(this.getOrders()));
+  }
+}
+
 // Componente de Login Admin
 const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
   const [username, setUsername] = useState('');
@@ -55,7 +133,7 @@ const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
             <Settings className="w-8 h-8 text-purple-600" />
           </div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Painel Administrativo</h2>
-          <p className="text-gray-600">Canto do Açaí - Acesso restrito</p>
+          <p className="text-gray-600">Acesso restrito</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -112,44 +190,15 @@ const AdminLogin = ({ onLogin }: { onLogin: () => void }) => {
 const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
   const [activeTab, setActiveTab] = useState('pedidos');
   const [products, setProducts] = useState(initialProducts);
-  const [orders, setOrders] = useState<Order[]>([
-    {
-      id: '1',
-      numero: '#001',
-      cliente: 'João Silva',
-      total: 45.90,
-      status: 'em preparo',
-      items: [
-        { name: 'X-Bacon', quantity: 1, price: 25.90 },
-        { name: 'Açaí 500ml', quantity: 1, price: 20.00 }
-      ],
-      customerInfo: {
-        name: 'João Silva',
-        address: 'Rua das Flores, 123',
-        paymentMethod: 'PIX',
-        phone: '(35) 99999-9999'
-      },
-      createdAt: new Date(Date.now() - 15 * 60 * 1000) // 15 minutos atrás
-    },
-    {
-      id: '2',
-      numero: '#002',
-      cliente: 'Maria Santos',
-      total: 32.50,
-      status: 'saiu para entrega',
-      items: [
-        { name: 'X-Salada', quantity: 1, price: 22.50 },
-        { name: 'Refrigerante', quantity: 1, price: 10.00 }
-      ],
-      customerInfo: {
-        name: 'Maria Santos',
-        address: 'Av. Principal, 456',
-        paymentMethod: 'Cartão',
-        phone: '(35) 98888-8888'
-      },
-      createdAt: new Date(Date.now() - 45 * 60 * 1000) // 45 minutos atrás
-    }
-  ]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const orderManager = OrderManager.getInstance();
+
+  // Sincronizar com o gerenciador de pedidos
+  useEffect(() => {
+    setOrders(orderManager.getOrders());
+    const unsubscribe = orderManager.subscribe(setOrders);
+    return unsubscribe;
+  }, []);
 
   // Função para gerar cupom fiscal
   const generateFiscalCoupon = (order: Order) => {
@@ -167,7 +216,7 @@ const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
     const couponContent = `
       <div style="width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.2; margin: 0; padding: 5mm;">
         <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px;">
-          <div style="font-size: 16px; font-weight: bold;">CANTO DO AÇAÍ</div>
+          <div style="font-size: 16px; font-weight: bold;">CORUJÃO LANCHES</div>
           <div style="font-size: 10px;">CNPJ: 00.000.000/0001-00</div>
           <div style="font-size: 10px;">Endereço: Rua Principal, 123</div>
           <div style="font-size: 10px;">Tel: (35) 99840-0130</div>
@@ -251,9 +300,7 @@ const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
 
   // Função para atualizar status do pedido
   const updateOrderStatus = (orderId: string, newStatus: Order['status']) => {
-    setOrders(prev => prev.map(order => 
-      order.id === orderId ? { ...order, status: newStatus } : order
-    ));
+    orderManager.updateOrderStatus(orderId, newStatus);
   };
 
   // Função para calcular tempo desde o pedido
@@ -481,7 +528,7 @@ const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
                   <Settings className="w-6 h-6 text-purple-600" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-800">Canto do Açaí</h1>
+                  <h1 className="text-2xl font-bold text-gray-800">Corujão Lanches</h1>
                   <p className="text-gray-600">Painel Administrativo</p>
                 </div>
               </div>
@@ -692,7 +739,7 @@ const AdminPanel = ({ onLogout }: { onLogout: () => void }) => {
                     <div className="grid md:grid-cols-2 gap-4">
                       <div>
                         <Label className="text-gray-700">Nome da Loja</Label>
-                        <Input value="Canto do Açaí" className="mt-1" />
+                        <Input value="Corujão Lanches" className="mt-1" />
                       </div>
                       <div>
                         <Label className="text-gray-700">CNPJ</Label>
@@ -919,6 +966,34 @@ const DeliveryForm = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Criar pedido para o painel administrativo
+    const orderManager = OrderManager.getInstance();
+    const newOrder: Order = {
+      id: Date.now().toString(),
+      numero: `#${String(orderManager.getOrders().length + 1).padStart(3, '0')}`,
+      cliente: formData.name,
+      total: state.total,
+      status: 'em preparo',
+      items: state.items.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price
+      })),
+      customerInfo: {
+        name: formData.name,
+        address: `${formData.address}, ${formData.number} - ${formData.neighborhood}`,
+        paymentMethod: formData.paymentMethod === 'pix' ? 'PIX' : 
+                      formData.paymentMethod === 'card' ? 'Cartão' : 'Dinheiro',
+        phone: '(35) 99999-9999' // Pode ser adicionado ao formulário se necessário
+      },
+      createdAt: new Date()
+    };
+
+    // Adicionar pedido ao painel
+    orderManager.addOrder(newOrder);
+    
+    // Enviar para WhatsApp
     sendToWhatsApp(formData);
   };
 
